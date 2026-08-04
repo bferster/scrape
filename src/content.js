@@ -217,7 +217,7 @@ function scrapeTableAuto() {
 function parseTableRows(rows, filtersHeaders = false) {
 	const data = [];
 	const seenRows = new Set();
-	const unwantedHeaders = ["attach", "attach_to_tree", "image", "edit", "view", "more", "select"];
+	const unwantedHeaders = ["attach", "attach_to_tree", "image", "edit", "view", "more", "select", "egoid", "note", "sheet_letter", "sheet letter"];
 
 	// Attempt to identify headers
 	const rowsArray = Array.from(rows);
@@ -480,8 +480,9 @@ function parseTableRows(rows, filtersHeaders = false) {
 			});
 
 			// 3. All other columns found in the table
+			const excludedKeys = ["line", "original_line", "attach_to_tree", "attach", "egoid", "note", "sheet_letter", "page_number", "birth_year_10", "nyiis_last_name"];
 			Object.keys(rowData).forEach(key => {
-				if (key !== "line" && key !== "original_line" && key !== "attach_to_tree" && key !== "attach" && !key.toLowerCase().includes("attach") && !priorityKeys.includes(key) && !endKeys.includes(key) && key !== "page_number" && key !== "birth_year_10" && key !== "nyiis_last_name") {
+				if (!excludedKeys.includes(key) && !key.toLowerCase().includes("attach") && !priorityKeys.includes(key) && !endKeys.includes(key)) {
 					orderedData[key] = rowData[key];
 				}
 			});

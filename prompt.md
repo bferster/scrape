@@ -40,7 +40,6 @@ Add these new columns to the table:
 	norm_occupation
 	norm_first_name	
 	nysiis_last_name
-	egoid
 
 All column header names must be lower case with each word separated by an underscore.
 Remove all punctuation from header names.
@@ -155,14 +154,13 @@ after all rows have been scraped:
 		nysiis_last_name	
 		norm_occupation
 		head
-		egoid
 
 Keep a continuous list of data scraped, appending each scrape to the previous scrapes.
 All columns in the table data being scraped should be included in the file.
 
 Always show how many rows were just scraped and the total rows in memory. This should show constantly in a footer.
 Make sure internal memory is sufficient to store all data.	
-Wait 10 seconds before scraping each page.
+Wait 6 seconds before scraping each page.
 Click on the button with the name "Next-Image" to go to the next page.
 If the "Next-Image" button is not found, look for a button with the name "Next" and click on it instead.
 Automatically click the "Next Image" button after scraping.
@@ -283,3 +281,19 @@ normalized_occupations_table[
   }
 ]
 
+
+**CN-1870 DOCS EDITS**
+
+familyNum=1 
+for each row { 
+	if head is == "Y" put familyNum in family column for the sucessive rows until the head becomes "Y" again, and then increment familyNum.
+	}
+
+**CN-1880 DOCS EDITS**
+
+if person_number is == "0" put a "Y" in head column
+
+familyNum=1 
+for each row { 
+	if person_number is == "0" put familyNum in family column for the sucessive rows until the person number becomes "0" again, and then increment familyNum.
+	}

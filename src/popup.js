@@ -82,10 +82,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 				// LOOP LOGIC
 				if (loopCb.checked && autoAdvanceCb.checked) {
-					updateStatus(`Waiting 10s before scraping Page ${pagesScrapedInSession + 1}...`, 'pending');
+					updateStatus(`Waiting 6s before scraping Page ${pagesScrapedInSession + 1}...`, 'pending');
 					loopTimer = setTimeout(() => {
 						performScrape();
-					}, 10000);
+					}, 6000);
 				}
 
 			} else {
@@ -245,8 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
 		];
 
 		// Identify extra keys (found in data but not in start/end lists)
+		const excludedPopupKeys = ["line", "attach_to_tree", "egoid", "note", "sheet_letter"];
 		const extraKeys = Array.from(allKeys)
-			.filter(k => !startKeys.includes(k) && !endKeys.includes(k) && k !== "line" && k !== "attach_to_tree" && !k.toLowerCase().includes("attach"))
+			.filter(k => !startKeys.includes(k) && !endKeys.includes(k) && !excludedPopupKeys.includes(k) && !k.toLowerCase().includes("attach"))
 			.sort();
 
 		// Construct final header order: Start -> Extras -> End
