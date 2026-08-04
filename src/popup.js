@@ -234,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 		// Split priority keys into Start and End groups based on user requirement
 		const startKeys = [
-			"line", "district", "dwelling", "family", "full_name",
+			"original_line", "district", "dwelling", "family", "full_name",
 			"first_name", "middle_name", "last_name", "age", "birth_year",
 			"gender", "race", "occupation", "birth_place"
 		];
@@ -246,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 		// Identify extra keys (found in data but not in start/end lists)
 		const extraKeys = Array.from(allKeys)
-			.filter(k => !startKeys.includes(k) && !endKeys.includes(k))
+			.filter(k => !startKeys.includes(k) && !endKeys.includes(k) && k !== "line" && k !== "attach_to_tree" && !k.toLowerCase().includes("attach"))
 			.sort();
 
 		// Construct final header order: Start -> Extras -> End
