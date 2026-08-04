@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<title>Census Scraper</title>
+	<style>
+		:root {
+			--primary: #3b82f6;
+			--primary-hover: #2563eb;
+			--bg-start: #0f172a;
+			--bg-end: #1e293b;
+			--text-main: #f8fafc;
+			--text-muted: #94a3b8;
+			--card-bg: rgba(30, 41, 59, 0.7);
+			--border: rgba(255, 255, 255, 0.1);
+		}
+
+		body {
+			margin: 0;
+			padding: 20px;
+			padding-bottom: 50px; /* Space for footer */
+			font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+			background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
+			color: var(--text-main);
+			min-height: 100vh;
+			box-sizing: border-box;
+		}
+
+		#stats-footer {
+			position: fixed;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			background: rgba(15, 23, 42, 0.95);
+			border-top: 1px solid var(--border);
+			padding: 10px 15px;
+			font-size: 13px;
+			color: var(--text-main);
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			backdrop-filter: blur(10px);
+			z-index: 100;
+			box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+		}
+
+		h2 {
+			margin: 0 0 5px 0;
+			font-weight: 600;
+			font-size: 20px;
+			letter-spacing: -0.5px;
+		}
+
+		p.subtitle {
+			margin: 0 0 20px 0;
+			color: var(--text-muted);
+			font-size: 13px;
+		}
+
+		#status {
+			padding: 10px 15px;
+			background: var(--card-bg);
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			font-size: 13px;
+			margin-bottom: 20px;
+			backdrop-filter: blur(10px);
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		/* Status Indicators */
+		.status-dot {
+			width: 8px;
+			height: 8px;
+			border-radius: 50%;
+			background-color: #fbbf24;
+			/* Warning/Pending */
+		}
+
+		.status-dot.success {
+			background-color: #4ade80;
+		}
+
+		.status-dot.error {
+			background-color: #f87171;
+		}
+
+		.actions {
+			display: flex;
+			gap: 10px;
+			margin-bottom: 20px;
+		}
+
+		button {
+			flex: 1;
+			padding: 12px;
+			border: none;
+			border-radius: 8px;
+			font-weight: 500;
+			font-size: 14px;
+			cursor: pointer;
+			transition: all 0.2s ease;
+		}
+
+		#scrapeBtn {
+			background: var(--primary);
+			color: white;
+			box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+		}
+
+		#scrapeBtn:hover {
+			background: var(--primary-hover);
+			transform: translateY(-1px);
+		}
+
+		#scrapeBtn:active {
+			transform: translateY(0);
+		}
+
+		#downloadBtn {
+			background: rgba(255, 255, 255, 0.05);
+			color: var(--text-muted);
+			border: 1px solid var(--border);
+			cursor: not-allowed;
+		}
+
+		#downloadBtn:not([disabled]) {
+			background: rgba(255, 255, 255, 0.1);
+			color: white;
+			cursor: pointer;
+		}
+
+		#downloadBtn:not([disabled]):hover {
+			background: rgba(255, 255, 255, 0.15);
+		}
+
+		#preview-container {
+			background: var(--card-bg);
+			border: 1px solid var(--border);
+			border-radius: 12px;
+			overflow: hidden;
+			backdrop-filter: blur(10px);
+			max-height: 250px;
+			display: none;
+			/* Hidden by default */
+		}
+
+		.preview-header {
+			padding: 10px 15px;
+			background: rgba(0, 0, 0, 0.2);
+			border-bottom: 1px solid var(--border);
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--text-muted);
+			text-transform: uppercase;
+		}
+
+		#preview {
+			overflow-y: auto;
+			max-height: 215px;
+		}
+
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			font-size: 12px;
+		}
+
+		th,
+		td {
+			padding: 10px 15px;
+			text-align: left;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		}
+
+		th {
+			background: rgba(255, 255, 255, 0.02);
+			color: var(--text-muted);
+			font-weight: 500;
+			position: sticky;
+			top: 0;
+			backdrop-filter: blur(5px);
+		}
+
+		td {
+			color: var(--text-main);
+		}
+
+		tr:last-child td {
+			border-bottom: none;
+		}
+
+		/* Scrollbar */
+		::-webkit-scrollbar {
+			width: 6px;
+			height: 6px;
+		}
+
+		::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		::-webkit-scrollbar-thumb {
+			background: rgba(255, 255, 255, 0.2);
+			border-radius: 3px;
+		}
+
+		::-webkit-scrollbar-thumb:hover {
+			background: rgba(255, 255, 255, 0.3);
+		}
+	</style>
+</head>
+
+<body>
+	<h2>Census Scraper</h2>
+	<p class="subtitle">Extract data from FamilySearch Image Indices</p>
+
+	<div id="status">
+		<div class="status-dot"></div>
+		<span id="status-text">Ready to scrape</span>
+	</div>
+
+	<div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px; font-size: 13px;">
+		<div style="display: flex; align-items: center; gap: 8px;">
+			<input type="checkbox" id="autoAdvance" checked>
+			<label for="autoAdvance" style="cursor: pointer; color: var(--text-muted);">Auto-Advance after
+				scraping</label>
+		</div>
+		<div style="display: flex; align-items: center; gap: 8px;">
+			<input type="checkbox" id="loopScrape">
+			<label for="loopScrape" style="cursor: pointer; color: var(--text-muted);">Loop (Wait 10s &
+				re-scrape)</label>
+		</div>
+		<div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+			<label for="maxPages" style="color: var(--text-muted);">Max Pages:</label>
+			<input type="number" id="maxPages" value="10" min="1"
+				style="width: 50px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); color: white; padding: 2px;">
+		</div>
+	</div>
+
+	<div class="actions">
+		<button id="scrapeBtn">Scrape Page</button>
+		<button id="nextBtn" style="background: #eab308; color: #000;">Next Image &gt;</button>
+	</div>
+	<div class="actions">
+		<button id="downloadBtn" disabled>Download CSV</button>
+		<button id="clearBtn" style="background: #ef4444; color: white;">Clear Data</button>
+	</div>
+
+	<div id="preview-container">
+		<div class="preview-header">Data Preview</div>
+		<div id="preview"></div>
+	</div>
+
+	<div id="stats-footer">
+		<span>Last Scrape: <b>0</b></span>
+		<span>Total Rows: <b>0</b></span>
+	</div>
+
+	<script src="jquery.min.js"></script>
+	<script src="popup.js"></script>
+</body>
+
+</html>

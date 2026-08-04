@@ -1,0 +1,38 @@
+{
+	"manifest_version": 3,
+	"name": "FamilySearch Census Scraper",
+	"version": "1.0",
+	"description": "Scrapes Image Index table data from FamilySearch.",
+	"permissions": [
+		"activeTab",
+		"scripting",
+		"storage",
+		"unlimitedStorage"
+	],
+	"background": {
+		"service_worker": "background.js"
+	},
+	"action": {
+		"default_icon": {
+			"16": "icon.png",
+			"48": "icon.png",
+			"128": "icon.png"
+		}
+	},
+	"icons": {
+		"16": "icon.png",
+		"48": "icon.png",
+		"128": "icon.png"
+	},
+	"content_scripts": [
+		{
+			"matches": [
+				"https://www.familysearch.org/*"
+			],
+			"js": [
+				"jquery.min.js",
+				"content.js"
+			]
+		}
+	]
+}
