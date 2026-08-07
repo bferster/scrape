@@ -10,6 +10,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 			data = scrapeTableAuto();
 		}
 
+		if (request.customField && request.customField.name && request.customField.name.trim()) {
+			const rawName = request.customField.name.trim();
+			const fieldKey = rawName.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, "_");
+			if (fieldKey) {
+				const val = request.customField.value || "";
+				data.forEach(row => {
+					row[fieldKey] = val;
+				});
+			}
+		}
+
 		sendResponse({ data: data });
 	}
 	else if (request.action === "next_page") {
@@ -247,6 +258,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 			cleanLower.includes("marital") || 
 			cleanLower.includes("head") || 
 			cleanLower.includes("event") || 
+			cleanLower.includes("relation") || 
 			cleanLower.includes("relationship") ||
 			cleanLower.includes("link");
 
@@ -277,6 +289,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 		else if (cleanLower === "age") text = "age";
 		else if (cleanLower === "page number" || cleanLower === "page") text = "page";
 		else if (cleanLower === "marital status" || cleanLower === "marital_status") text = "marital_status";
+		else if (cleanLower.includes("relation")) text = "relation";
 		else if (cleanLower.includes("head")) text = "head";
 		else {
 			// 2. Generic snake_case for all other columns
@@ -327,6 +340,19 @@ function parseTableRows(rows, filtersHeaders = false) {
 						rowData["full_name"] = rowData[k];
 					}
 					delete rowData[k];
+				}
+			});
+
+			// Ensure any column with 'relation' in its header key is mapped into 'relation' column
+			Object.keys(rowData).forEach(k => {
+				const kClean = k.toLowerCase().replace(/_/g, " ").trim();
+				if (kClean.includes("relation")) {
+					if (!rowData["relation"]) {
+						rowData["relation"] = rowData[k];
+					}
+					if (k !== "relation") {
+						delete rowData[k];
+					}
 				}
 			});
 
@@ -451,6 +477,13 @@ function parseTableRows(rows, filtersHeaders = false) {
 			// 8. head
 			if (rowData["head"]) {
 				rowData["head"] = "Y";
+			} else if (rowData["relation"]) {
+				const relLower = rowData["relation"].toLowerCase();
+				if (relLower.startsWith("head") || relLower.startsWith("self")) {
+					rowData["head"] = "Y";
+				} else {
+					rowData["head"] = "";
+				}
 			} else {
 				rowData["head"] = "";
 			}
@@ -465,7 +498,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 			const priorityKeys = [
 				"district", "dwelling", "family", "full_name", "first_name",
 				"middle_name", "last_name", "age", "birth_year", "gender",
-				"race", "occupation", "birth_place"
+				"race", "relation", "occupation", "birth_place"
 			];
 			const endKeys = [
 				"norm_race", "norm_first_name", "nysiis_last_name", "norm_occupation", "head"
@@ -474,7 +507,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 			priorityKeys.forEach(key => {
 				if (rowData.hasOwnProperty(key)) {
 					orderedData[key] = rowData[key];
-				} else {
+				} else if (key !== "relation") {
 					orderedData[key] = "";
 				}
 			});

@@ -27,6 +27,7 @@ Rename the "Sex" column to "gender".
 Rename the "Race" column to "race".
 Rename the "Age" column to "age".
 Rename the "Relationship to Head of Household" column to "head".
+If source file has a page with the string "relation" in it, extract value and put value in "relation" column for output.
 Rename the "Page Number" column to "page".
 
 Add these new columns to the table:
@@ -166,6 +167,7 @@ If the "Next-Image" button is not found, look for a button with the name "Next" 
 Automatically click the "Next Image" button after scraping.
 If a page does not have data, skip it and go to the next page.
 Add input to set how many pages to loop through.
+Add two input boxes: "New field" and "Value". If there is anything entered in the new field input, create a field with that name and put the value field's value in it.
 Before downloading remove any duplicate rows.
 When that many pages have been scraped, download the file.
 

@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
 	const autoAdvanceCb = document.getElementById('autoAdvance');
 	const loopCb = document.getElementById('loopScrape');
 	const maxPagesInput = document.getElementById('maxPages');
+	const newFieldNameInput = document.getElementById('newFieldName');
+	const newFieldValueInput = document.getElementById('newFieldValue');
 
 	const previewContainer = document.getElementById('preview-container');
 	const preview = document.getElementById('preview');
@@ -20,8 +22,25 @@ document.addEventListener('DOMContentLoaded', () => {
 	let loopTimer = null;
 	let pagesScrapedInSession = 0;
 
+	function applyCustomField(rows) {
+		if (!rows || !rows.length) return rows;
+		const rawName = newFieldNameInput ? newFieldNameInput.value.trim() : "";
+		if (!rawName) return rows;
+
+		const fieldKey = rawName.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, "_");
+		if (!fieldKey) return rows;
+
+		const fieldValue = newFieldValueInput ? newFieldValueInput.value : "";
+		rows.forEach(row => {
+			row[fieldKey] = fieldValue;
+		});
+		return rows;
+	}
+
 	// Load persisted data
-	chrome.storage.local.get(['scrapedData'], (result) => {
+	chrome.storage.local.get(['scrapedData', 'newFieldName', 'newFieldValue'], (result) => {
+		if (result.newFieldName !== undefined && newFieldNameInput) newFieldNameInput.value = result.newFieldName;
+		if (result.newFieldValue !== undefined && newFieldValueInput) newFieldValueInput.value = result.newFieldValue;
 		if (result.scrapedData) {
 			scrapedData = result.scrapedData;
 			// ... (keep existing display logic if needed, or just status)
@@ -34,6 +53,17 @@ document.addEventListener('DOMContentLoaded', () => {
 			}
 		}
 	});
+
+	if (newFieldNameInput) {
+		newFieldNameInput.addEventListener('input', () => {
+			chrome.storage.local.set({ newFieldName: newFieldNameInput.value });
+		});
+	}
+	if (newFieldValueInput) {
+		newFieldValueInput.addEventListener('input', () => {
+			chrome.storage.local.set({ newFieldValue: newFieldValueInput.value });
+		});
+	}
 
 	function updateStatus(message, type = 'pending') {
 		statusText.textContent = message;
@@ -117,7 +147,12 @@ document.addEventListener('DOMContentLoaded', () => {
 			return;
 		}
 
-		chrome.tabs.sendMessage(activeTabId, { action: "scrape_selection" }, (response) => {
+		const customFieldObj = {
+			name: newFieldNameInput ? newFieldNameInput.value : "",
+			value: newFieldValueInput ? newFieldValueInput.value : ""
+		};
+
+		chrome.tabs.sendMessage(activeTabId, { action: "scrape_selection", customField: customFieldObj }, (response) => {
 			if (chrome.runtime.lastError) {
 				updateStatus('Error: Reload page.', 'error');
 				stopLoop();
@@ -125,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			}
 
 			if (response && response.data && response.data.length > 0) {
-				const newData = response.data;
+				const newData = applyCustomField(response.data);
 				// Appending logic
 				scrapedData = [...scrapedData, ...newData];
 
@@ -216,6 +251,10 @@ document.addEventListener('DOMContentLoaded', () => {
 	downloadBtn.addEventListener('click', () => {
 		if (!scrapedData.length) return;
 
+		// Ensure custom field is applied to all rows in memory
+		scrapedData = applyCustomField(scrapedData);
+		chrome.storage.local.set({ scrapedData: scrapedData });
+
 		// DEDUPLICATION BEFORE DOWNLOAD
 		// Use Set with JSON stringify to filter unique rows
 		const seen = new Set();
@@ -236,7 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		const startKeys = [
 			"original_line", "district", "dwelling", "family", "full_name",
 			"first_name", "middle_name", "last_name", "age", "birth_year",
-			"gender", "race", "occupation", "birth_place"
+			"gender", "race", "relation", "occupation", "birth_place"
 		];
 
 		const endKeys = [
@@ -291,6 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	function displayData(data) {
 		if (!data.length) return;
+		data = applyCustomField(data);
 
 		// PERFORMANCE: Only show last 10 rows to prevent freezing
 		const limit = 10;
