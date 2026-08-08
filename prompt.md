@@ -299,3 +299,5 @@ familyNum=1
 for each row { 
 	if person_number is == "0" put familyNum in family column for the sucessive rows until the person number becomes "0" again, and then increment familyNum.
 	}
+
+**Add the /Src filder to pack extension files so they can be installed.**

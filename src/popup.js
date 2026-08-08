@@ -251,10 +251,6 @@ document.addEventListener('DOMContentLoaded', () => {
 	downloadBtn.addEventListener('click', () => {
 		if (!scrapedData.length) return;
 
-		// Ensure custom field is applied to all rows in memory
-		scrapedData = applyCustomField(scrapedData);
-		chrome.storage.local.set({ scrapedData: scrapedData });
-
 		// DEDUPLICATION BEFORE DOWNLOAD
 		// Use Set with JSON stringify to filter unique rows
 		const seen = new Set();
@@ -306,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			headers.join(','),
 			...uniqueData.map(row =>
 				headers.map(header => {
-					let cell = row[header] || '';
+					let cell = row[header] !== undefined && row[header] !== null ? String(row[header]) : '';
 					// Escape quotes and wrap in quotes if contains comma or quote
 					if (cell.includes('"') || cell.includes(',')) {
 						cell = `"${cell.replace(/"/g, '""')}"`;
@@ -330,7 +326,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	function displayData(data) {
 		if (!data.length) return;
-		data = applyCustomField(data);
 
 		// PERFORMANCE: Only show last 10 rows to prevent freezing
 		const limit = 10;
@@ -349,7 +344,10 @@ document.addEventListener('DOMContentLoaded', () => {
 		const thead = document.createElement('thead');
 		const tbody = document.createElement('tbody');
 
-		const headers = Object.keys(data[0]);
+		let allKeys = new Set();
+		data.forEach(row => Object.keys(row).forEach(k => allKeys.add(k)));
+		const headers = Array.from(allKeys);
+
 		const trHead = document.createElement('tr');
 		headers.forEach(h => {
 			const th = document.createElement('th');
@@ -362,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			const tr = document.createElement('tr');
 			headers.forEach(h => {
 				const td = document.createElement('td');
-				td.textContent = row[h];
+				td.textContent = row[h] !== undefined ? row[h] : '';
 				tr.appendChild(td);
 			});
 			tbody.appendChild(tr);
