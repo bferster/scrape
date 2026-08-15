@@ -270,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		// Split priority keys into Start and End groups based on user requirement
 		const startKeys = [
 			"original_line", "district", "dwelling", "family", "full_name",
-			"first_name", "middle_name", "last_name", "age", "birth_year",
+			"first_name", "middle_name", "last_name", "age", "birth_year", "death_year",
 			"gender", "race", "relation", "occupation", "birth_place"
 		];
 

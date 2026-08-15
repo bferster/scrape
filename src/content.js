@@ -343,6 +343,17 @@ function parseTableRows(rows, filtersHeaders = false) {
 				}
 			});
 
+			// If full_name is still not found, check if any cell text contains "Sex:" (e.g. "Carson Gardner\nSex: Male\nPrincipal")
+			if (!rowData["full_name"]) {
+				for (const k of Object.keys(rowData)) {
+					if (typeof rowData[k] === "string" && /sex:\s*/i.test(rowData[k])) {
+						rowData["full_name"] = rowData[k];
+						delete rowData[k];
+						break;
+					}
+				}
+			}
+
 			// Ensure any column with 'relation' in its header key is mapped into 'relation' column
 			Object.keys(rowData).forEach(k => {
 				const kClean = k.toLowerCase().replace(/_/g, " ").trim();
@@ -356,16 +367,141 @@ function parseTableRows(rows, filtersHeaders = false) {
 				}
 			});
 
-			// Clean multi-line name cell value if needed (e.g. "More\nNoah H Moyer\nGroom")
+			// Clean multi-line name cell value and extract embedded metadata (e.g. "Sex: Male", "Sex: Female", "Principal")
 			if (rowData["full_name"]) {
-				const lines = rowData["full_name"].split(/[\r\n]+/).map(s => s.trim()).filter(s => s.length > 0);
+				// Normalize NBSP (\u00A0) and standard newlines
+				const rawVal = rowData["full_name"].replace(/\u00A0/g, " ").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+				const lines = rawVal.split("\n").map(s => s.trim()).filter(s => s.length > 0);
+				const remainingLines = [];
+
+				for (let line of lines) {
+					// Check for embedded gender line starting with or containing "Sex:" (e.g., "Sex: Female", "Sex: Male", "Sex: F", "Sex: M")
+					const sexMatch = line.match(/\bsex:\s*([a-z]+)/i);
+					if (sexMatch) {
+						const rawSex = sexMatch[1].trim();
+						if (rawSex) {
+							const lowerSex = rawSex.toLowerCase();
+							if (lowerSex.startsWith("female") || lowerSex === "f") {
+								rowData["gender"] = "F";
+							} else if (lowerSex.startsWith("male") || lowerSex === "m") {
+								rowData["gender"] = "M";
+							} else {
+								rowData["gender"] = rawSex;
+							}
+						}
+						// Strip out "Sex: ..." from line
+						line = line.replace(/\bsex:\s*[a-z]+\b/gi, "").trim();
+					}
+
+					// Check for embedded Age line (e.g. "Age: 25")
+					const ageMatch = line.match(/\bage:\s*([0-9\/\s\w]+)/i);
+					if (ageMatch) {
+						if (!rowData["age"]) {
+							rowData["age"] = ageMatch[1].trim();
+						}
+						line = line.replace(/\bage:\s*[0-9\/\s\w]+\b/gi, "").trim();
+					}
+
+					if (line) {
+						remainingLines.push(line);
+					}
+				}
+
 				const actionWords = ["more", "view", "attach", "edit", "expand", "details", "show", "hide", "select"];
-				while (lines.length > 0 && actionWords.includes(lines[0].toLowerCase())) {
-					lines.shift();
+				while (remainingLines.length > 0 && actionWords.includes(remainingLines[0].toLowerCase())) {
+					remainingLines.shift();
 				}
-				if (lines.length > 0) {
-					rowData["full_name"] = lines[0];
+
+				if (remainingLines.length > 0) {
+					// Top line is the person's full name
+					rowData["full_name"] = remainingLines[0];
+
+					// Check any subsequent lines for occupation / relationship (e.g., "Principal", "Teacher", "Wife", "Son")
+					for (let j = 1; j < remainingLines.length; j++) {
+						const extraLine = remainingLines[j];
+						const extraLower = extraLine.toLowerCase();
+
+						if (actionWords.includes(extraLower)) continue;
+
+						const knownRelations = ["head", "wife", "husband", "son", "daughter", "father", "mother", "child", "brother", "sister", "groom", "bride", "self", "relation"];
+						if (knownRelations.some(r => extraLower === r || extraLower.startsWith(r))) {
+							if (!rowData["relation"]) rowData["relation"] = extraLine;
+						} else {
+							// Treat as occupation if occupation is not already filled
+							if (!rowData["occupation"]) {
+								rowData["occupation"] = extraLine;
+							}
+						}
+					}
+				} else {
+					rowData["full_name"] = "";
 				}
+			}
+
+			// Universal fallback: If gender is not set, check all row values for "Sex: Male" or "Sex: Female"
+			if (!rowData["gender"]) {
+				Object.values(rowData).forEach(v => {
+					if (typeof v === "string") {
+						const match = v.match(/\bsex:\s*([a-z]+)/i);
+						if (match) {
+							const lowerSex = match[1].toLowerCase();
+							if (lowerSex.startsWith("female") || lowerSex === "f") rowData["gender"] = "F";
+							else if (lowerSex.startsWith("male") || lowerSex === "m") rowData["gender"] = "M";
+						}
+					}
+				});
+			}
+
+			// Process "Events" column for Death and Birth years
+			Object.keys(rowData).forEach(k => {
+				const kClean = k.toLowerCase().replace(/_/g, " ").trim();
+				if (kClean.includes("event")) {
+					const val = rowData[k];
+					if (val) {
+						const rawVal = val.replace(/\u00A0/g, " ").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+						const lines = rawVal.split("\n").map(s => s.trim()).filter(s => s.length > 0);
+						for (const line of lines) {
+							// Line starting with "Death", get death_year (e.g. "Death 1852", "Death: 1852", "Death 14 May 1852")
+							if (/^\s*death\b/i.test(line)) {
+								const yearMatch = line.match(/\b(\d{4})\b/);
+								if (yearMatch) {
+									rowData["death_year"] = yearMatch[1];
+								}
+							}
+							// Line starting with "Birth", get birth_year (e.g. "Birth 1852", "Birth: 1852", "Birth 14 May 1852")
+							if (/^\s*birth\b/i.test(line)) {
+								const yearMatch = line.match(/\b(\d{4})\b/);
+								if (yearMatch) {
+									rowData["birth_year"] = yearMatch[1];
+								}
+							}
+						}
+					}
+				}
+			});
+
+			// Universal fallback: check all row values for lines starting with "Death" or "Birth"
+			if (!rowData["death_year"] || !rowData["birth_year"]) {
+				Object.values(rowData).forEach(v => {
+					if (typeof v === "string") {
+						const rawVal = v.replace(/\u00A0/g, " ").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+						const lines = rawVal.split("\n").map(s => s.trim()).filter(s => s.length > 0);
+						for (const line of lines) {
+							if (!rowData["death_year"] && /^\s*death\b/i.test(line)) {
+								const yearMatch = line.match(/\b(\d{4})\b/);
+								if (yearMatch) {
+									rowData["death_year"] = yearMatch[1];
+								}
+							}
+							if (!rowData["birth_year"] && /^\s*birth\b/i.test(line)) {
+								const yearMatch = line.match(/\b(\d{4})\b/);
+								if (yearMatch) {
+									rowData["birth_year"] = yearMatch[1];
+								}
+							}
+						}
+					}
+				});
 			}
 
 			// 1. Name Splitting
@@ -419,9 +555,9 @@ function parseTableRows(rows, filtersHeaders = false) {
 
 			// 3. Gender Encoding
 			if (rowData["gender"]) {
-				const g = rowData["gender"].toLowerCase();
-				if (g.startsWith("male")) rowData["gender"] = "M";
-				else if (g.startsWith("female")) rowData["gender"] = "F";
+				const g = rowData["gender"].toLowerCase().trim();
+				if (g.startsWith("female") || g === "f") rowData["gender"] = "F";
+				else if (g.startsWith("male") || g === "m") rowData["gender"] = "M";
 			}
 
 			// 3.5 Marital Status Encoding
@@ -497,7 +633,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 			// 2. Priority Columns (if they exist)
 			const priorityKeys = [
 				"district", "dwelling", "family", "full_name", "first_name",
-				"middle_name", "last_name", "age", "birth_year", "gender",
+				"middle_name", "last_name", "age", "birth_year", "death_year", "gender",
 				"race", "relation", "occupation", "birth_place"
 			];
 			const endKeys = [
@@ -507,7 +643,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 			priorityKeys.forEach(key => {
 				if (rowData.hasOwnProperty(key)) {
 					orderedData[key] = rowData[key];
-				} else if (key !== "relation") {
+				} else if (key !== "relation" && key !== "death_year") {
 					orderedData[key] = "";
 				}
 			});
