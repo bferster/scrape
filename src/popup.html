@@ -225,6 +225,10 @@
 
 	<div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px; font-size: 13px;">
 		<div style="display: flex; align-items: center; gap: 8px;">
+			<input type="checkbox" id="scrapeAll">
+			<label for="scrapeAll" style="cursor: pointer; color: var(--text-muted);">Scrape all</label>
+		</div>
+		<div style="display: flex; align-items: center; gap: 8px;">
 			<input type="checkbox" id="autoAdvance" checked>
 			<label for="autoAdvance" style="cursor: pointer; color: var(--text-muted);">Auto-Advance after
 				scraping</label>
@@ -272,6 +276,20 @@
 	<div id="stats-footer">
 		<span>Last Scrape: <b>0</b></span>
 		<span>Total Rows: <b>0</b></span>
+	</div>
+
+	<div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+		<div style="background: #1e293b; border: 1px solid var(--border); border-radius: 12px; padding: 20px; max-width: 320px; width: 100%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); position: relative;">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+				<h3 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--text-main);">Append or Clear?</h3>
+				<span id="modalCloseBtn" style="cursor: pointer; color: var(--text-muted); font-size: 18px; line-height: 1; padding: 0 4px;">&times;</span>
+			</div>
+			<p id="confirmModalMsg" style="margin: 0 0 16px 0; font-size: 13px; color: var(--text-muted); line-height: 1.4;">You have rows in memory. Do you want to append to this list?</p>
+			<div style="display: flex; gap: 10px;">
+				<button id="modalClearBtn" style="background: #ef4444; color: white;">Clear</button>
+				<button id="modalAppendBtn" style="background: var(--primary); color: white;">Append</button>
+			</div>
+		</div>
 	</div>
 
 	<script src="jquery.min.js"></script>

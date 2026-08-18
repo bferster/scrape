@@ -1,16 +1,16 @@
-// Content script to scrape Selection or Auto-detect Table
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	if (request.action === "scrape_selection") {
+		const scrapeAll = !!request.scrapeAll;
 		// Try selection first
-		let data = scrapeSelection();
+		let data = scrapeSelection(scrapeAll);
 
 		// If no selection, try auto-detection
 		if (data.length === 0) {
 			console.log("No selection found. Attempting auto-detection of table...");
-			data = scrapeTableAuto();
+			data = scrapeTableAuto(scrapeAll);
 		}
 
-		if (request.customField && request.customField.name && request.customField.name.trim()) {
+		if (!scrapeAll && request.customField && request.customField.name && request.customField.name.trim()) {
 			const rawName = request.customField.name.trim();
 			const fieldKey = rawName.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, "_");
 			if (fieldKey) {
@@ -144,7 +144,7 @@ function clickNextButton() {
 	return false;
 }
 
-function scrapeSelection() {
+function scrapeSelection(scrapeAll = false) {
 	const selection = window.getSelection();
 	if (!selection || selection.rangeCount === 0 || selection.toString().trim() === "") {
 		return [];
@@ -157,7 +157,7 @@ function scrapeSelection() {
 
 	const rows = div.querySelectorAll('tr, [role="row"], .ag-row');
 	if (rows.length > 0) {
-		return parseTableRows(rows);
+		return parseTableRows(rows, false, scrapeAll);
 	}
 	return [];
 }
@@ -173,7 +173,7 @@ function querySelectorAllDeep(selector, root = document) {
 	return elements;
 }
 
-function scrapeTableAuto() {
+function scrapeTableAuto(scrapeAll = false) {
 	// Strategy: Find the "best" table.
 	// Criteria 1: Contains specific FamilySearch headers (Name, Sex, Age)
 	// Criteria 2: Has the most rows.
@@ -219,13 +219,13 @@ function scrapeTableAuto() {
 	if (bestTable) {
 		const tblRoot = bestTable[0].shadowRoot || bestTable[0];
 		const bestRows = querySelectorAllDeep('tr, [role="row"], .ag-row', tblRoot);
-		return parseTableRows(bestRows, true);
+		return parseTableRows(bestRows, true, scrapeAll);
 	}
 
 	return [];
 }
 
-function parseTableRows(rows, filtersHeaders = false) {
+function parseTableRows(rows, filtersHeaders = false, scrapeAll = false) {
 	const data = [];
 	const seenRows = new Set();
 	const unwantedHeaders = ["attach", "attach_to_tree", "image", "edit", "view", "more", "select", "egoid", "note", "sheet_letter", "sheet letter"];
@@ -241,67 +241,86 @@ function parseTableRows(rows, filtersHeaders = false) {
 
 	// Header Processing (First Row)
 	const firstRowCells = querySelectorAllDeep('td, th, [role="columnheader"], [role="cell"], [role="gridcell"], .ag-cell, .ag-header-cell', rowsArray[0]);
-	firstRowCells.forEach((cell, index) => {
-		let text = cell.innerText.trim();
-		let lower = text.toLowerCase();
-		let cleanLower = lower.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 
-		// Check if this column is a known data column
-		const isKnownDataColumn = 
-			cleanLower.includes("name") || 
-			cleanLower.includes("sex") || 
-			cleanLower.includes("gender") || 
-			cleanLower.includes("age") || 
-			cleanLower.includes("birth") || 
-			cleanLower.includes("race") || 
-			cleanLower.includes("page") || 
-			cleanLower.includes("marital") || 
-			cleanLower.includes("head") || 
-			cleanLower.includes("event") || 
-			cleanLower.includes("relation") || 
-			cleanLower.includes("relationship") ||
-			cleanLower.includes("link");
+	if (scrapeAll) {
+		firstRowCells.forEach((cell, index) => {
+			let text = cell.innerText ? cell.innerText.trim() : "";
+			let lower = text.toLowerCase();
+			let colKey = lower.replace(/[^\w\s]|_/g, "").replace(/\s+/g, "_").trim();
+			if (!colKey) colKey = `column_${index + 1}`;
 
-		// Only ignore column if it's NOT a data column AND (its header is in unwantedHeaders or it has empty header text)
-		const isUnwanted = unwantedHeaders.some(u => cleanLower.includes(u));
-		if (!isKnownDataColumn && (isUnwanted || text === "" || cleanLower.includes("attach"))) {
-			ignoredColumnIndices.add(index);
-			return;
-		}
+			// Make sure keys are unique if multiple columns have identical headers
+			let uniqueKey = colKey;
+			let counter = 2;
+			while (Object.values(headerMap).includes(uniqueKey)) {
+				uniqueKey = `${colKey}_${counter++}`;
+			}
+			headerMap[index] = uniqueKey;
+			originalHeaders.push(uniqueKey);
+		});
+	} else {
+		firstRowCells.forEach((cell, index) => {
+			let text = cell.innerText.trim();
+			let lower = text.toLowerCase();
+			let cleanLower = lower.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 
-		if (!text) text = `Column_${index + 1}`;
+			// Check if this column is a known data column
+			const isKnownDataColumn = 
+				cleanLower.includes("name") || 
+				cleanLower.includes("sex") || 
+				cleanLower.includes("gender") || 
+				cleanLower.includes("age") || 
+				cleanLower.includes("birth") || 
+				cleanLower.includes("race") || 
+				cleanLower.includes("page") || 
+				cleanLower.includes("marital") || 
+				cleanLower.includes("head") || 
+				cleanLower.includes("event") || 
+				cleanLower.includes("relation") || 
+				cleanLower.includes("relationship") ||
+				cleanLower.includes("link");
 
-		// 1. Specific Renames (Priority)
-		if (
-			cleanLower === "name" ||
-			cleanLower === "full name" ||
-			cleanLower === "fullname" ||
-			cleanLower === "full_name" ||
-			(cleanLower.includes("name") && !cleanLower.includes("first") && !cleanLower.includes("last") && !cleanLower.includes("middle") && !cleanLower.includes("given") && !cleanLower.includes("sur"))
-		) {
-			text = "full_name";
-		}
-		else if (cleanLower === "line" || cleanLower === "line number" || cleanLower === "original line") text = "original_line";
-		else if (cleanLower === "birthplace" || cleanLower.includes("birth place")) text = "birth_place";
-		else if (cleanLower.includes("birth year") || cleanLower.includes("bith year")) text = "birth_year";
-		else if (cleanLower === "sex" || cleanLower === "gender") text = "gender";
-		else if (cleanLower === "race") text = "race";
-		else if (cleanLower === "age") text = "age";
-		else if (cleanLower === "page number" || cleanLower === "page") text = "page";
-		else if (cleanLower === "marital status" || cleanLower === "marital_status") text = "marital_status";
-		else if (cleanLower.includes("relation")) text = "relation";
-		else if (cleanLower.includes("head")) text = "head";
-		else {
-			// 2. Generic snake_case for all other columns
-			// Remove punctuation, replace non-alphanumeric with underscore, remove leading/trailing underscores
-			text = lower.replace(/[^\w\s]|_/g, "").replace(/\s+/g, "_");
-			if (!text) text = `column_${index + 1}`;
-		}
+			// Only ignore column if it's NOT a data column AND (its header is in unwantedHeaders or it has empty header text)
+			const isUnwanted = unwantedHeaders.some(u => cleanLower.includes(u));
+			if (!isKnownDataColumn && (isUnwanted || text === "" || cleanLower.includes("attach"))) {
+				ignoredColumnIndices.add(index);
+				return;
+			}
 
-		// ALWAYS include the column (User request: "All columns in the table should be included")
-		headerMap[index] = text;
-		originalHeaders.push(text);
-	});
+			if (!text) text = `Column_${index + 1}`;
+
+			// 1. Specific Renames (Priority)
+			if (
+				cleanLower === "name" ||
+				cleanLower === "full name" ||
+				cleanLower === "fullname" ||
+				cleanLower === "full_name" ||
+				(cleanLower.includes("name") && !cleanLower.includes("first") && !cleanLower.includes("last") && !cleanLower.includes("middle") && !cleanLower.includes("given") && !cleanLower.includes("sur"))
+			) {
+				text = "full_name";
+			}
+			else if (cleanLower === "line" || cleanLower === "line number" || cleanLower === "original line") text = "original_line";
+			else if (cleanLower === "birthplace" || cleanLower.includes("birth place")) text = "birth_place";
+			else if (cleanLower.includes("birth year") || cleanLower.includes("bith year")) text = "birth_year";
+			else if (cleanLower === "sex" || cleanLower === "gender") text = "gender";
+			else if (cleanLower === "race") text = "race";
+			else if (cleanLower === "age") text = "age";
+			else if (cleanLower === "page number" || cleanLower === "page") text = "page";
+			else if (cleanLower === "marital status" || cleanLower === "marital_status") text = "marital_status";
+			else if (cleanLower.includes("relation")) text = "relation";
+			else if (cleanLower.includes("head")) text = "head";
+			else {
+				// 2. Generic snake_case for all other columns
+				// Remove punctuation, replace non-alphanumeric with underscore, remove leading/trailing underscores
+				text = lower.replace(/[^\w\s]|_/g, "").replace(/\s+/g, "_");
+				if (!text) text = `column_${index + 1}`;
+			}
+
+			// ALWAYS include the column (User request: "All columns in the table should be included")
+			headerMap[index] = text;
+			originalHeaders.push(text);
+		});
+	}
 
 	// Extract data
 	for (let i = 1; i < rowsArray.length; i++) {
@@ -311,7 +330,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 		let hasData = false;
 
 		cells.forEach((cell, index) => {
-			if (ignoredColumnIndices.has(index)) return;
+			if (!scrapeAll && ignoredColumnIndices.has(index)) return;
 
 			let key = headerMap[index];
 			if (!key) {
@@ -327,6 +346,15 @@ function parseTableRows(rows, filtersHeaders = false) {
 		});
 
 		if (hasData) {
+			if (scrapeAll) {
+				const signature = JSON.stringify(rowData);
+				if (!seenRows.has(signature)) {
+					seenRows.add(signature);
+					data.push(rowData);
+				}
+				continue;
+			}
+
 			// --- TRANSFORMATIONS ---
 
 			// Ensure 'name' or generic name field is mapped into 'full_name'
@@ -539,18 +567,16 @@ function parseTableRows(rows, filtersHeaders = false) {
 			if (rowData["race"]) {
 				const r = rowData["race"].toLowerCase();
 				let code = rowData["race"];
-				let normR = "";
-				if (r.startsWith("black")) { code = "B"; normR = "B"; }
-				else if (r.startsWith("white")) { code = "W"; normR = "W"; }
-				else if (r.startsWith("other")) { code = "O"; normR = "O"; }
-				else if (r.startsWith("unknown")) { code = "U"; normR = "U"; }
-				else if (r.startsWith("mulatto")) { code = "M"; normR = "B"; }
-				else if (r.startsWith("chinese")) { code = "C"; normR = "W"; }
-				else if (r.startsWith("yellow")) { code = "Y"; normR = "W"; }
-				else if (r.startsWith("octoroon")) { code = "O"; normR = "B"; }
+				if (r.startsWith("black")) { code = "B"; }
+				else if (r.startsWith("white")) { code = "W"; }
+				else if (r.startsWith("other")) { code = "O"; }
+				else if (r.startsWith("unknown")) { code = "U"; }
+				else if (r.startsWith("mulatto")) { code = "M"; }
+				else if (r.startsWith("chinese")) { code = "C"; }
+				else if (r.startsWith("yellow")) { code = "Y"; }
+				else if (r.startsWith("octoroon")) { code = "O"; }
 				else if (r.startsWith("indian")) { code = "I"; }
 				rowData["race"] = code;
-				rowData["norm_race"] = normR;
 			}
 
 			// 3. Gender Encoding
@@ -597,20 +623,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 
 			// --- CALCULATED COLUMNS ---
 
-			// 5. norm_first_name
-			rowData["norm_first_name"] = normalizeFirstName(first);
-
-			// 6. nysiis_last_name
-			rowData["nysiis_last_name"] = nysiis(last);
-
-			// 7. norm_occupation
-			if (rowData.hasOwnProperty("occupation")) {
-				rowData["norm_occupation"] = normalizeOccupation(rowData["occupation"]);
-			} else {
-				rowData["norm_occupation"] = "";
-			}
-
-			// 8. head
+			// head
 			if (rowData["head"]) {
 				rowData["head"] = "Y";
 			} else if (rowData["relation"]) {
@@ -637,7 +650,7 @@ function parseTableRows(rows, filtersHeaders = false) {
 				"race", "relation", "occupation", "birth_place"
 			];
 			const endKeys = [
-				"norm_race", "norm_first_name", "nysiis_last_name", "norm_occupation", "head"
+				"head"
 			];
 
 			priorityKeys.forEach(key => {

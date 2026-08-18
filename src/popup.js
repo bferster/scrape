@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	const downloadBtn = document.getElementById('downloadBtn');
 	const nextBtn = document.getElementById('nextBtn');
 	const clearBtn = document.getElementById('clearBtn');
+	const scrapeAllCb = document.getElementById('scrapeAll');
 	const autoAdvanceCb = document.getElementById('autoAdvance');
 	const loopCb = document.getElementById('loopScrape');
 	const maxPagesInput = document.getElementById('maxPages');
@@ -18,12 +19,19 @@ document.addEventListener('DOMContentLoaded', () => {
 	const statusDot = document.querySelector('.status-dot');
 	const statsFooter = document.getElementById('stats-footer'); // Get footer ref
 
+	const confirmModal = document.getElementById('confirmModal');
+	const confirmModalMsg = document.getElementById('confirmModalMsg');
+	const modalAppendBtn = document.getElementById('modalAppendBtn');
+	const modalClearBtn = document.getElementById('modalClearBtn');
+	const modalCloseBtn = document.getElementById('modalCloseBtn');
+
 	let scrapedData = [];
 	let loopTimer = null;
 	let pagesScrapedInSession = 0;
 
 	function applyCustomField(rows) {
 		if (!rows || !rows.length) return rows;
+		if (scrapeAllCb && scrapeAllCb.checked) return rows;
 		const rawName = newFieldNameInput ? newFieldNameInput.value.trim() : "";
 		if (!rawName) return rows;
 
@@ -38,7 +46,8 @@ document.addEventListener('DOMContentLoaded', () => {
 	}
 
 	// Load persisted data
-	chrome.storage.local.get(['scrapedData', 'newFieldName', 'newFieldValue'], (result) => {
+	chrome.storage.local.get(['scrapedData', 'newFieldName', 'newFieldValue', 'scrapeAll'], (result) => {
+		if (result.scrapeAll !== undefined && scrapeAllCb) scrapeAllCb.checked = result.scrapeAll;
 		if (result.newFieldName !== undefined && newFieldNameInput) newFieldNameInput.value = result.newFieldName;
 		if (result.newFieldValue !== undefined && newFieldValueInput) newFieldValueInput.value = result.newFieldValue;
 		if (result.scrapedData) {
@@ -54,6 +63,11 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 	});
 
+	if (scrapeAllCb) {
+		scrapeAllCb.addEventListener('change', () => {
+			chrome.storage.local.set({ scrapeAll: scrapeAllCb.checked });
+		});
+	}
 	if (newFieldNameInput) {
 		newFieldNameInput.addEventListener('input', () => {
 			chrome.storage.local.set({ newFieldName: newFieldNameInput.value });
@@ -79,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		`;
 	}
 
-	clearBtn.addEventListener('click', () => {
+	function clearData() {
 		scrapedData = [];
 		chrome.storage.local.set({ scrapedData: [] });
 		previewContainer.style.display = 'none';
@@ -89,6 +103,10 @@ document.addEventListener('DOMContentLoaded', () => {
 		updateStatus('Data cleared.', 'pending');
 		updateFooterStats(0, 0);
 		stopLoop();
+	}
+
+	clearBtn.addEventListener('click', () => {
+		clearData();
 	});
 
 	nextBtn.addEventListener('click', async () => {
@@ -152,7 +170,9 @@ document.addEventListener('DOMContentLoaded', () => {
 			value: newFieldValueInput ? newFieldValueInput.value : ""
 		};
 
-		chrome.tabs.sendMessage(activeTabId, { action: "scrape_selection", customField: customFieldObj }, (response) => {
+		const isScrapeAll = scrapeAllCb ? scrapeAllCb.checked : false;
+
+		chrome.tabs.sendMessage(activeTabId, { action: "scrape_selection", customField: customFieldObj, scrapeAll: isScrapeAll }, (response) => {
 			if (chrome.runtime.lastError) {
 				updateStatus('Error: Reload page.', 'error');
 				stopLoop();
@@ -224,9 +244,42 @@ document.addEventListener('DOMContentLoaded', () => {
 		});
 	}
 
+	if (modalCloseBtn) {
+		modalCloseBtn.addEventListener('click', () => {
+			if (confirmModal) confirmModal.style.display = 'none';
+		});
+	}
+
+	if (confirmModal) {
+		confirmModal.addEventListener('click', (e) => {
+			if (e.target === confirmModal) {
+				confirmModal.style.display = 'none';
+			}
+		});
+	}
+
+	if (modalAppendBtn) {
+		modalAppendBtn.addEventListener('click', () => {
+			if (confirmModal) confirmModal.style.display = 'none';
+			pagesScrapedInSession = 0;
+			performScrape();
+		});
+	}
+
+	if (modalClearBtn) {
+		modalClearBtn.addEventListener('click', () => {
+			if (confirmModal) confirmModal.style.display = 'none';
+			clearData();
+			pagesScrapedInSession = 0;
+			performScrape();
+		});
+	}
+
 	scrapeBtn.addEventListener('click', () => {
 		if (scrapedData.length > 0) {
-			if (!confirm(`You have ${scrapedData.length} rows in memory. Do you want to append to this list?`)) {
+			if (confirmModal && confirmModalMsg) {
+				confirmModalMsg.textContent = `You have ${scrapedData.length} rows in memory. Do you want to append to this list?`;
+				confirmModal.style.display = 'flex';
 				return;
 			}
 		}
@@ -267,35 +320,33 @@ document.addEventListener('DOMContentLoaded', () => {
 		let allKeys = new Set();
 		uniqueData.forEach(row => Object.keys(row).forEach(k => allKeys.add(k)));
 
-		// Split priority keys into Start and End groups based on user requirement
-		const startKeys = [
-			"original_line", "district", "dwelling", "family", "full_name",
-			"first_name", "middle_name", "last_name", "age", "birth_year", "death_year",
-			"gender", "race", "relation", "occupation", "birth_place"
-		];
+		let headers;
+		if (scrapeAllCb && scrapeAllCb.checked) {
+			headers = Array.from(allKeys);
+		} else {
+			// Split priority keys into Start and End groups based on user requirement
+			const startKeys = [
+				"original_line", "district", "dwelling", "family", "full_name",
+				"first_name", "middle_name", "last_name", "age", "birth_year", "death_year",
+				"gender", "race", "relation", "occupation", "birth_place"
+			];
 
-		const endKeys = [
-			"norm_race", "norm_first_name", "nysiis_last_name",
-			"norm_occupation", "head"
-		];
+			const endKeys = [
+				"head"
+			];
 
-		// Identify extra keys (found in data but not in start/end lists)
-		const excludedPopupKeys = ["line", "attach_to_tree", "egoid", "note", "sheet_letter"];
-		const extraKeys = Array.from(allKeys)
-			.filter(k => !startKeys.includes(k) && !endKeys.includes(k) && !excludedPopupKeys.includes(k) && !k.toLowerCase().includes("attach"))
-			.sort();
+			// Identify extra keys (found in data but not in start/end lists)
+			const excludedPopupKeys = ["line", "attach_to_tree", "egoid", "note", "sheet_letter"];
+			const extraKeys = Array.from(allKeys)
+				.filter(k => !startKeys.includes(k) && !endKeys.includes(k) && !excludedPopupKeys.includes(k) && !k.toLowerCase().includes("attach"))
+				.sort();
 
-		// Construct final header order: Start -> Extras -> End
-		// Filter out keys from Start/End that don't exist in data? 
-		// Actually, usually we force headers even if empty if they are "Standard", 
-		// but the current logic was doing `priorityKeys.filter(k => allKeys.has(k))`.
-		// We will stick to only including keys that actually have data (or valid headers found).
-
-		const headers = [
-			...startKeys.filter(k => allKeys.has(k)),
-			...extraKeys,
-			...endKeys.filter(k => allKeys.has(k))
-		];
+			headers = [
+				...startKeys.filter(k => allKeys.has(k)),
+				...extraKeys,
+				...endKeys.filter(k => allKeys.has(k))
+			];
+		}
 
 		// Handle CSV escaping properly
 		const csvContent = [
